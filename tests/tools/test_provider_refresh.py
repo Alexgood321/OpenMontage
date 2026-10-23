@@ -581,6 +581,30 @@ def test_gemini_voice_library_is_read_only(monkeypatch):
     assert request.call_args.args[0] == "GET"
 
 
+def test_gemini_tts_keeps_client_alive_during_request(monkeypatch, tmp_path):
+    import weakref
+    import tools.google_credentials as creds
+
+    class Interactions:
+        def __init__(self, client):
+            self._client = weakref.ref(client)
+
+        def create(self, **request):
+            if self._client() is None:
+                raise RuntimeError("client has been closed")
+            return SimpleNamespace(output_audio=SimpleNamespace(data=b"RIFFwav"))
+
+    class Client:
+        def __init__(self):
+            self.interactions = Interactions(self)
+
+    monkeypatch.setattr(creds, "get_genai_client", lambda **_: Client())
+    out = tmp_path / "speech.wav"
+    result = GeminiTTS().execute({"text": "Hola", "output_path": str(out)})
+    assert result.success, result.error
+    assert out.read_bytes() == b"RIFFwav"
+
+
 def test_unknown_price_preflight_is_not_free(monkeypatch):
     monkeypatch.setenv("FAL_KEY", "test")
     result = WanFalVideo().dry_run({"prompt": "Clouds"})
