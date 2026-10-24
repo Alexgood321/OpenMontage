@@ -254,9 +254,9 @@ def test_avatar_v_eligibility_before_paid_post(monkeypatch, tmp_path):
             return {
                 "data": {
                     "avatar_type": "digital_twin" if eligible else "photo_avatar",
-                    "supported_api_engines": ["avatar_v"]
-                    if eligible
-                    else ["avatar_iv"],
+                    "supported_api_engines": (
+                        ["avatar_v"] if eligible else ["avatar_iv"]
+                    ),
                 }
             }
         if method == "POST":
@@ -440,7 +440,7 @@ def test_direct_eleven_v4_continuity_and_pcm(monkeypatch, tmp_path):
     result = ElevenLabsTTS().execute(
         {
             "text": "Next sentence",
-            "model_id": "eleven_v4_turbo",
+            "model_id": "eleven_v4",
             "previous_request_ids": ["r0"],
             "output_format": "pcm_24000",
             "output_path": str(output),
