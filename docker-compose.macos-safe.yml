@@ -1,0 +1,31 @@
+services:
+  safe:
+    build:
+      context: .
+      dockerfile: Dockerfile.macos-safe
+    image: openmontage-macos-safe:local
+    user: "${HOST_UID:-65532}:${HOST_GID:-65532}"
+    working_dir: /workspace
+    init: true
+    read_only: true
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 6g
+    cpus: 4.0
+    environment:
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/.cache
+      PYTHONDONTWRITEBYTECODE: "1"
+      NPM_CONFIG_CACHE: /tmp/.npm
+      OPENMONTAGE_ALLOW_HOST_CODE_EXEC: "0"
+    tmpfs:
+      - /tmp:rw,nosuid,size=1073741824
+      - /workspace/.backlot:rw,nosuid,size=134217728
+    volumes:
+      - ./input:/workspace/input:ro
+      - ./projects:/workspace/projects:rw
+      - ./output:/workspace/output:rw
+      - ./library:/workspace/library:rw
