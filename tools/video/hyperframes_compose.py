@@ -240,7 +240,15 @@ class HyperFramesCompose(BaseTool):
     # ------------------------------------------------------------------
 
     _NODE_FLOOR_MAJOR = 22
-    _NPM_PACKAGE = "hyperframes"  # published npm name (NOT @hyperframes/cli — that's 404)
+    _NPM_PACKAGE = "hyperframes"  # published npm name
+
+    @classmethod
+    def _pinned_npm_spec(cls) -> Optional[str]:
+        """No moving npm tags or automatic execution of unknown versions."""
+        version = os.environ.get("OPENMONTAGE_HYPERFRAMES_VERSION", "").strip()
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", version):
+            return None
+        return f"{cls._NPM_PACKAGE}@{version}"
     # Process-level cache for the npm resolve check. Shape:
     #   {"version": "0.4.5"}   → package resolves
     #   {"error": "<short>"}   → resolution failed (offline, unpublished, etc.)
@@ -284,6 +292,9 @@ class HyperFramesCompose(BaseTool):
         """
         if cls._npm_resolve_cache is not None:
             return cls._npm_resolve_cache
+        spec = cls._pinned_npm_spec()
+        if spec is None:
+            return {"error": "OPENMONTAGE_HYPERFRAMES_VERSION must be an exact x.y.z pin"}
 
         npm = shutil.which("npm")
         if not npm:
@@ -292,7 +303,7 @@ class HyperFramesCompose(BaseTool):
 
         try:
             proc = subprocess.run(
-                [npm, "view", cls._NPM_PACKAGE, "version"],
+                [npm, "view", spec, "version"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -335,6 +346,9 @@ class HyperFramesCompose(BaseTool):
         if cls._cli_probe_cache is not None:
             return cls._cli_probe_cache
 
+        spec = cls._pinned_npm_spec()
+        if spec is None:
+            return {"error": "HyperFrames exact version pin is required"}
         npx = shutil.which("npx")
         if not npx:
             cls._cli_probe_cache = {"error": "npx not on PATH"}
@@ -342,7 +356,7 @@ class HyperFramesCompose(BaseTool):
 
         try:
             proc = subprocess.run(
-                [npx, "--yes", cls._NPM_PACKAGE, "doctor", "--json"],
+                [npx, "--yes", spec, "doctor", "--json"],
                 capture_output=True,
                 text=True,
                 timeout=20,
@@ -1360,7 +1374,13 @@ class HyperFramesCompose(BaseTool):
         want to raise CalledProcessError on non-zero exits — the caller
         parses lint/validate/render exit codes itself.
         """
-        cmd = ["npx", "--yes", "hyperframes", *args]
+        spec = self._pinned_npm_spec()
+        if spec is None:
+            return subprocess.CompletedProcess(
+                args=["npx", "hyperframes", *args], returncode=2,
+                stdout="", stderr="OPENMONTAGE_HYPERFRAMES_VERSION=x.y.z is required",
+            )
+        cmd = ["npx", "--yes", spec, *args]
         # On Windows, resolve the .cmd wrapper so subprocess can find it
         # without shell=True.
         if os.name == "nt":
