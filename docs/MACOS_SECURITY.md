@@ -42,3 +42,6 @@ symlinks and oversized archives are rejected before extraction.
 
 The `make setup` macOS refusal is a target prerequisite and runs before
 `ensure-venv` creates a host environment.
+
+`doctor` runs a real smoke test: denies root filesystem/input writes, verifies
+external network is blocked, renders a 1-second FFmpeg file and probes it.

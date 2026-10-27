@@ -17,7 +17,7 @@ case "${1:-}" in
     "${COMPOSE[@]}" build --pull safe "$@"
     ;;
   doctor)
-    "${COMPOSE[@]}" run --rm safe python -c 'import os,sys,shutil; print("python",sys.version.split()[0],"ffmpeg",shutil.which("ffmpeg"),"node",shutil.which("node"),"uid",os.getuid(),"network", "offline via Docker")'
+    "${COMPOSE[@]}" run --rm safe python scripts/macos-sandbox-selftest.py
     ;;
   run)
     shift
