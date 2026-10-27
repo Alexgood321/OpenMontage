@@ -1,0 +1,20 @@
+# macOS/Apple Silicon: build inside Docker Desktop's Linux VM.
+# Runtime network is disabled by docker-compose.macos-safe.yml.
+FROM node:22-bookworm-slim AS node
+FROM python:3.11-slim-bookworm
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+ && apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates libstdc++6 libgcc-s1 \
+ && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp \
+    NPM_CONFIG_CACHE=/tmp/.npm OPENMONTAGE_ALLOW_HOST_CODE_EXEC=0
+WORKDIR /workspace
+COPY requirements.txt /workspace/requirements.txt
+RUN python -m pip install --no-cache-dir --only-binary=:all: -r requirements.txt
+COPY remotion-composer/package.json remotion-composer/package-lock.json /workspace/remotion-composer/
+RUN cd /workspace/remotion-composer && npm ci --ignore-scripts --no-audit --no-fund
+COPY . /workspace
+USER 65532:65532
+CMD ["python", "-c", "print('Sandbox ready. Use scripts/macos-safe.sh run <command>')"]

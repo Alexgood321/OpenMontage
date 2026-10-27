@@ -265,6 +265,12 @@ class MathAnimate(BaseTool):
         return deduped
 
     def _render(self, inputs: dict[str, Any]) -> ToolResult:
+        # LLM-authored scene_code is executable Python, not trusted video data.
+        if os.environ.get("OPENMONTAGE_ALLOW_HOST_CODE_EXEC") != "1":
+            return ToolResult(success=False, error=(
+                "Generated Python execution is Disabled by default. "
+                "Only enable inside a disposable sandbox after source review."
+            ))
         scene_code = inputs["scene_code"]
         scene_name = inputs.get("scene_name")
         quality = inputs.get("quality", "medium")

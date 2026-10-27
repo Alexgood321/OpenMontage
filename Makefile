@@ -6,7 +6,7 @@ PIP = $(RUN_PYTHON) -m pip
 
 .DEFAULT_GOAL := setup
 
-.PHONY: setup install install-dev install-gpu test test-contracts lint clean preflight demo demo-list hyperframes-doctor hyperframes-warm venv ensure-venv
+.PHONY: macos-host-guard setup install install-dev install-gpu test test-contracts lint clean preflight demo demo-list hyperframes-doctor hyperframes-warm venv ensure-venv
 
 # ---- Virtual environment ----
 
@@ -51,20 +51,26 @@ venv: ensure-venv
 
 # ---- One-command setup ----
 
-setup: ensure-venv
+macos-host-guard:
+	@if [ "$$(uname -s)" = "Darwin" ] && [ "$${OPENMONTAGE_UNSAFE_HOST_SETUP:-0}" != "1" ]; then \
+	  echo "BLOCKED: use bash scripts/macos-safe.sh build, not host installation"; \
+	  echo "Expert-only override: OPENMONTAGE_UNSAFE_HOST_SETUP=1 make setup"; exit 2; \
+	fi
+
+setup: macos-host-guard ensure-venv
 	@echo "==> Installing Python dependencies..."
-	$(PIP) install -r requirements.txt
+	$(PIP) install --only-binary=:all: -r requirements.txt
 	@echo ""
 	@echo "==> Installing Remotion composer..."
-	cd remotion-composer && npm install
+	cd remotion-composer && npm ci --ignore-scripts --no-audit --no-fund
 	@echo ""
 	@echo "==> Installing free offline TTS (Piper)..."
-	$(PIP) install piper-tts || echo "  [skip] piper-tts install failed — TTS will use cloud providers instead"
+	$(PIP) install --only-binary=:all: piper-tts || echo "  [skip] piper-tts install failed — TTS will use cloud providers instead"
 	@echo ""
-	@echo "==> Installing HyperFrames runtime (cache-warm via npx)..."
-	@echo "    Pulls the 'hyperframes' npm package into the local npx cache so the"
-	@echo "    first render doesn't pay a 30-60s cold-fetch penalty. ~20MB of disk."
-	@npx --yes hyperframes --version >/dev/null 2>&1 && echo "    HyperFrames CLI cached (npx)" || echo "  [skip] HyperFrames cache-warm failed — offline or npm unavailable; first render will fetch on demand"
+	@echo "==> HyperFrames only with a reviewed exact version..."
+	@if [ -n "$${OPENMONTAGE_HYPERFRAMES_VERSION:-}" ]; then \
+	  npx --yes "hyperframes@$${OPENMONTAGE_HYPERFRAMES_VERSION}" --version; \
+	else echo "  [skip] Set OPENMONTAGE_HYPERFRAMES_VERSION=x.y.z to enable."; fi
 	@$(RUN_PYTHON) -c "from tools.video.hyperframes_compose import HyperFramesCompose; HyperFramesCompose._npm_resolve_cache=None; c=HyperFramesCompose()._runtime_check(); print(f'    HyperFrames runtime_available={c[\"runtime_available\"]}, npm={c.get(\"npm_package_version\") or c.get(\"npm_resolve_error\")}'); [print(f'    note: {r}') for r in c['reasons']]" || echo "  [skip] HyperFrames check failed — runtime can be set up later"
 	@echo ""
 	$(RUN_PYTHON) -c "import shutil, os; e=os.path.exists('.env'); shutil.copy('.env.example','.env') if not e else None; print('==> Created .env from .env.example — add your API keys there.' if not e else '==> .env already exists — skipping.')"
@@ -77,49 +83,50 @@ setup: ensure-venv
 
 # ---- Individual installs ----
 
-install: ensure-venv
-	$(PIP) install -r requirements.txt
+install: macos-host-guard ensure-venv
+	$(PIP) install --only-binary=:all: -r requirements.txt
 
-install-dev: ensure-venv
+install-dev: macos-host-guard ensure-venv
 	$(PIP) install -r requirements-dev.txt
 
-install-gpu: ensure-venv
+install-gpu: macos-host-guard ensure-venv
 	$(PIP) install -r requirements-gpu.txt
 	$(PIP) install diffusers transformers accelerate
 
 # ---- Testing ----
 
-test: ensure-venv
+test: macos-host-guard ensure-venv
 	$(RUN_PYTHON) -m pytest tests/ -v
 
-test-contracts: ensure-venv
+test-contracts: macos-host-guard ensure-venv
 	$(RUN_PYTHON) -m pytest tests/contracts/ -v
 
 # ---- Utilities ----
 
-preflight: ensure-venv
+preflight: macos-host-guard ensure-venv
 	$(RUN_PYTHON) -c "from tools.tool_registry import registry; import json; registry.discover(); print(json.dumps(registry.provider_menu(), indent=2))"
 
-hyperframes-doctor: ensure-venv
+hyperframes-doctor: macos-host-guard ensure-venv
 	@echo "==> Probing HyperFrames runtime (node/ffmpeg/npx + hyperframes doctor)..."
 	$(RUN_PYTHON) -c "from tools.video.hyperframes_compose import HyperFramesCompose; r=HyperFramesCompose().execute({'operation':'doctor'}); import json; print(json.dumps(r.data, indent=2)); print('OK' if r.success else f'FAIL: {r.error}')"
 
-hyperframes-warm:
-	@echo "==> Refreshing the HyperFrames npx cache to latest..."
+hyperframes-warm: macos-host-guard
+	@echo "==> Caching a pinned HyperFrames release..."
 	@echo "    Uses --prefer-online so npx picks up new releases since your last run."
-	npx --yes --prefer-online hyperframes --version
+	@test -n "$${OPENMONTAGE_HYPERFRAMES_VERSION:-}" || (echo "Set OPENMONTAGE_HYPERFRAMES_VERSION=x.y.z first"; exit 2)
+	npx --yes "hyperframes@$${OPENMONTAGE_HYPERFRAMES_VERSION}" --version
 	@echo "==> Cache warm complete."
 
-demo: ensure-venv
+demo: macos-host-guard ensure-venv
 	@echo "==> Rendering zero-key demo videos (no API keys needed)..."
 	@echo "    These use only Remotion components — animated charts, text, data viz."
 	@echo ""
 	$(RUN_PYTHON) render_demo.py
 
-demo-list: ensure-venv
+demo-list: macos-host-guard ensure-venv
 	$(RUN_PYTHON) render_demo.py --list
 
-lint: ensure-venv
+lint: macos-host-guard ensure-venv
 	$(RUN_PYTHON) -m py_compile tools/base_tool.py
 	$(RUN_PYTHON) -m py_compile tools/tool_registry.py
 	$(RUN_PYTHON) -m py_compile tools/cost_tracker.py
