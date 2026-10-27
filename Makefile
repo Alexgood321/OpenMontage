@@ -65,7 +65,7 @@ setup: macos-host-guard ensure-venv
 	cd remotion-composer && npm ci --ignore-scripts --no-audit --no-fund
 	@echo ""
 	@echo "==> Installing free offline TTS (Piper)..."
-	$(PIP) install piper-tts || echo "  [skip] piper-tts install failed — TTS will use cloud providers instead"
+	$(PIP) install --only-binary=:all: piper-tts || echo "  [skip] piper-tts install failed — TTS will use cloud providers instead"
 	@echo ""
 	@echo "==> HyperFrames only with a reviewed exact version..."
 	@if [ -n "$${OPENMONTAGE_HYPERFRAMES_VERSION:-}" ]; then \
@@ -83,50 +83,50 @@ setup: macos-host-guard ensure-venv
 
 # ---- Individual installs ----
 
-install: ensure-venv
+install: macos-host-guard ensure-venv
 	$(PIP) install --only-binary=:all: -r requirements.txt
 
-install-dev: ensure-venv
+install-dev: macos-host-guard ensure-venv
 	$(PIP) install -r requirements-dev.txt
 
-install-gpu: ensure-venv
+install-gpu: macos-host-guard ensure-venv
 	$(PIP) install -r requirements-gpu.txt
 	$(PIP) install diffusers transformers accelerate
 
 # ---- Testing ----
 
-test: ensure-venv
+test: macos-host-guard ensure-venv
 	$(RUN_PYTHON) -m pytest tests/ -v
 
-test-contracts: ensure-venv
+test-contracts: macos-host-guard ensure-venv
 	$(RUN_PYTHON) -m pytest tests/contracts/ -v
 
 # ---- Utilities ----
 
-preflight: ensure-venv
+preflight: macos-host-guard ensure-venv
 	$(RUN_PYTHON) -c "from tools.tool_registry import registry; import json; registry.discover(); print(json.dumps(registry.provider_menu(), indent=2))"
 
-hyperframes-doctor: ensure-venv
+hyperframes-doctor: macos-host-guard ensure-venv
 	@echo "==> Probing HyperFrames runtime (node/ffmpeg/npx + hyperframes doctor)..."
 	$(RUN_PYTHON) -c "from tools.video.hyperframes_compose import HyperFramesCompose; r=HyperFramesCompose().execute({'operation':'doctor'}); import json; print(json.dumps(r.data, indent=2)); print('OK' if r.success else f'FAIL: {r.error}')"
 
-hyperframes-warm:
+hyperframes-warm: macos-host-guard
 	@echo "==> Caching a pinned HyperFrames release..."
 	@echo "    Uses --prefer-online so npx picks up new releases since your last run."
 	@test -n "$${OPENMONTAGE_HYPERFRAMES_VERSION:-}" || (echo "Set OPENMONTAGE_HYPERFRAMES_VERSION=x.y.z first"; exit 2)
 	npx --yes "hyperframes@$${OPENMONTAGE_HYPERFRAMES_VERSION}" --version
 	@echo "==> Cache warm complete."
 
-demo: ensure-venv
+demo: macos-host-guard ensure-venv
 	@echo "==> Rendering zero-key demo videos (no API keys needed)..."
 	@echo "    These use only Remotion components — animated charts, text, data viz."
 	@echo ""
 	$(RUN_PYTHON) render_demo.py
 
-demo-list: ensure-venv
+demo-list: macos-host-guard ensure-venv
 	$(RUN_PYTHON) render_demo.py --list
 
-lint: ensure-venv
+lint: macos-host-guard ensure-venv
 	$(RUN_PYTHON) -m py_compile tools/base_tool.py
 	$(RUN_PYTHON) -m py_compile tools/tool_registry.py
 	$(RUN_PYTHON) -m py_compile tools/cost_tracker.py
