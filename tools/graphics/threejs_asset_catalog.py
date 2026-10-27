@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import urllib.request
 import zipfile
@@ -65,7 +66,42 @@ def _sha256(path: Path) -> str:
 def _download(url: str, destination: Path) -> None:
     request = urllib.request.Request(url, headers={"User-Agent": "OpenMontage/threejs-asset-catalog"})
     with urllib.request.urlopen(request, timeout=120) as response, destination.open("wb") as output:
-        shutil.copyfileobj(response, output)
+        total = 0
+        while True:
+            part = response.read(1024 * 1024)
+            if not part:
+                break
+            total += len(part)
+            if total > 512 * 1024 * 1024:
+                raise ValueError("Archive exceeds 512 MiB download limit")
+            output.write(part)
+
+
+def _extract_archive_safely(archive: Path, target: Path) -> None:
+    """Bound extraction size, reject symlinks and paths outside target."""
+    with zipfile.ZipFile(archive) as package:
+        entries = package.infolist()
+        if len(entries) > 10000 or sum(e.file_size for e in entries) > 1024**3:
+            raise ValueError("Archive exceeds extraction limits")
+        root = target.resolve()
+        for entry in entries:
+            name = entry.filename
+            item = Path(name)
+            if (item.is_absolute() or ".." in item.parts
+                    or "\\" in name or ":" in name or not name):
+                raise ValueError("Unsafe ZIP member path")
+            mode = (entry.external_attr >> 16) & 0o170000
+            if mode not in (0, 0o100000, 0o040000):
+                raise ValueError("ZIP contains a non-regular file")
+            path = (target / item).resolve()
+            if not path.is_relative_to(root):
+                raise ValueError("ZIP member escapes extraction root")
+            if entry.is_dir():
+                path.mkdir(parents=True, exist_ok=True)
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with package.open(entry) as source, path.open("wb") as output:
+                    shutil.copyfileobj(source, output)
 
 
 class ThreeJSAssetCatalog(BaseTool):
@@ -99,6 +135,7 @@ class ThreeJSAssetCatalog(BaseTool):
             "operation": {"type": "string", "enum": ["list", "install", "inspect"]},
             "catalog_id": {"type": "string"},
             "output_path": {"type": "string"},
+            "expected_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
         },
     }
     output_schema = {"type": "object"}
@@ -132,16 +169,25 @@ class ThreeJSAssetCatalog(BaseTool):
         if operation != "install":
             return ToolResult(success=False, error=f"Unsupported operation {operation!r}")
 
+        # A hash must be obtained independently from a trusted source.
+        # Never trust a hash returned by the same download operation.
+        expected = str(params.get("expected_sha256") or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+            return ToolResult(success=False, error="Install requires trusted expected_sha256")
         source = CATALOGS[catalog_id]
         root.mkdir(parents=True, exist_ok=True)
         archive = root / f"{catalog_id}.zip"
         if not archive.exists():
             _download(source["download_url"], archive)
+        actual_hash = _sha256(archive)
+        if actual_hash != expected:
+            return ToolResult(success=False, error=(
+                "Archive SHA-256 mismatch; cannot install untrusted assets"
+            ))
         extract_root = root / "source"
         if not extract_root.exists():
             extract_root.mkdir(parents=True)
-            with zipfile.ZipFile(archive) as package:
-                package.extractall(extract_root)
+            _extract_archive_safely(archive, extract_root)
 
         models = sorted(
             path for path in extract_root.rglob("*")

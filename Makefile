@@ -6,7 +6,7 @@ PIP = $(RUN_PYTHON) -m pip
 
 .DEFAULT_GOAL := setup
 
-.PHONY: setup install install-dev install-gpu test test-contracts lint clean preflight demo demo-list hyperframes-doctor hyperframes-warm venv ensure-venv
+.PHONY: macos-host-guard setup install install-dev install-gpu test test-contracts lint clean preflight demo demo-list hyperframes-doctor hyperframes-warm venv ensure-venv
 
 # ---- Virtual environment ----
 
@@ -51,11 +51,13 @@ venv: ensure-venv
 
 # ---- One-command setup ----
 
-setup: ensure-venv
+macos-host-guard:
 	@if [ "$$(uname -s)" = "Darwin" ] && [ "$${OPENMONTAGE_UNSAFE_HOST_SETUP:-0}" != "1" ]; then \
 	  echo "BLOCKED: use bash scripts/macos-safe.sh build, not host installation"; \
 	  echo "Expert-only override: OPENMONTAGE_UNSAFE_HOST_SETUP=1 make setup"; exit 2; \
 	fi
+
+setup: macos-host-guard ensure-venv
 	@echo "==> Installing Python dependencies..."
 	$(PIP) install --only-binary=:all: -r requirements.txt
 	@echo ""

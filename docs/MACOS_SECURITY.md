@@ -35,3 +35,10 @@ bash scripts/macos-safe.sh run python -c "import shutil; print(shutil.which('ffm
 
 Rollback reference: `backup/pre-macos-hardening-2026-10-27`.
 Original head: `e01dbf433f46eeb91d39bf905e194162921019a3`.
+
+Third-party ZIP catalog installation now fails closed unless `expected_sha256`
+is explicitly supplied from an independently trusted source. Path traversal,
+symlinks and oversized archives are rejected before extraction.
+
+The `make setup` macOS refusal is a target prerequisite and runs before
+`ensure-venv` creates a host environment.
